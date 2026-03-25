@@ -34,6 +34,9 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
   min-height:100vh;display:flex;align-items:center;justify-content:center;
   background:var(--cream);position:relative;overflow:hidden;
 }
+#auth-screen.hidden{display:none;}
+#app{display:none;min-height:100vh;}
+#app.visible{display:flex;}
 #auth-screen::before{
   content:'';position:absolute;inset:0;
   background:radial-gradient(ellipse 80% 60% at 20% 40%,rgba(122,158,126,0.12) 0%,transparent 60%),
@@ -119,8 +122,6 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
 @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.1);};}
 
 /* ── APP ─────────────────────────────────────── */
-#app{display:none;min-height:100vh;}
-#app.visible{display:flex;}
 .sidebar{width:248px;height:100vh;background:var(--white);border-right:1px solid var(--parchment);display:flex;flex-direction:column;flex-shrink:0;position:sticky;top:0;overflow-y:auto;}
 .main{flex:1;overflow-y:auto;}
 .page{display:none;padding:32px;}
@@ -198,7 +199,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
   .page{padding:20px 16px 32px;}
   .page-header{margin-top:52px;}
   .summary-cards{grid-template-columns:repeat(2,1fr);}
-  #app{display:flex!important;}
+  #app.visible{display:flex;}
 }
 
 /* ── SYNC INDICATOR ─────────────────────────────────────── */
@@ -384,13 +385,13 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
 </div>
 
 <!-- HAMBURGER (mobile) -->
-<button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Menu">
-  <span></span><span></span><span></span>
-</button>
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
 
 <!-- APP -->
-<div id="app">
+<div id="app" style="display:none;">
+  <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
   <div class="sidebar">
     <div class="sidebar-logo">
       <div class="logo-icon">🌱</div>
