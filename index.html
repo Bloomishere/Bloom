@@ -317,6 +317,16 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
 #toast.error{background:var(--red-soft);}
 
 /* Sheet link banner */
+.component-row{display:grid;grid-template-columns:1fr 80px 80px 64px 32px;gap:6px;margin-bottom:6px;align-items:center;}
+.component-row input{padding:8px 10px;border:1.5px solid var(--stone-light);border-radius:var(--radius-sm);font-family:var(--sans);font-size:13px;color:var(--text);background:var(--cream);outline:none;width:100%;transition:border-color 0.2s;}
+.component-row input:focus{border-color:var(--sage);background:var(--white);}
+.component-row .del-btn{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;}
+
+/* grade table term grouping */
+.grade-term-group{margin-bottom:18px;}
+.grade-term-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-soft);padding:6px 0 4px;border-bottom:1px solid var(--parchment);margin-bottom:4px;}
+.grade-term-total{font-size:12px;color:var(--sage-dark);font-weight:600;padding:5px 0 2px;text-align:right;}
+
 .sheet-banner{
   background:var(--sky-pale);border:1.5px solid var(--sky);
   border-radius:var(--radius-sm);padding:10px 14px;
@@ -514,19 +524,43 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
   </div>
 </div>
 <div class="modal-overlay hidden" id="modal-add-grade">
-  <div class="modal">
-    <div class="modal-title">Add Grade Entry</div>
+  <div class="modal" style="width:540px;">
+    <div class="modal-title" id="grade-modal-title">Add Grade Entry</div>
     <div class="form-row">
-      <div class="form-group"><label>Subject</label><select id="grade-subject"></select></div>
+      <div class="form-group"><label>Subject</label><select id="grade-subject" onchange="onGradeSubjectChange()"></select></div>
       <div class="form-group"><label>Term</label><select id="grade-term"><option>Term 1</option><option>Term 2</option><option>Term 3</option><option>Term 4</option></select></div>
     </div>
-    <div class="form-group"><label>Paper / Component (optional)</label><input type="text" id="grade-paper" placeholder="e.g. P1 Composition, Oral — or leave blank"></div>
-    <div class="form-row">
-      <div class="form-group"><label>Score Obtained</label><input type="number" id="grade-scored" placeholder="72" min="0"></div>
-      <div class="form-group"><label>Max Score</label><input type="number" id="grade-max" placeholder="100" min="1"></div>
+
+    <!-- STANDARD subjects: single row -->
+    <div id="grade-single-mode">
+      <div class="form-group"><label>Paper / Component <span style="font-weight:400;color:var(--text-soft);">(optional)</span></label><input type="text" id="grade-paper" placeholder="e.g. Paper 1 — or leave blank"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Score Obtained</label><input type="number" id="grade-scored" placeholder="72" min="0"></div>
+        <div class="form-group"><label>Max Score</label><input type="number" id="grade-max" placeholder="100" min="1"></div>
+      </div>
+      <div class="form-group"><label>Annual Weightage % <span style="font-weight:400;color:var(--text-soft);">(optional)</span></label><input type="number" id="grade-weight" placeholder="e.g. 25"></div>
     </div>
-    <div class="form-group"><label>Annual Weightage % (optional)</label><input type="number" id="grade-weight" placeholder="e.g. 25"></div>
-    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-add-grade')">Cancel</button><button class="btn btn-primary" onclick="saveGrade()">Save Grade</button></div>
+
+    <!-- LANGUAGE subjects: multiple components -->
+    <div id="grade-multi-mode" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 76px 76px 60px 28px;gap:6px;padding:0 2px;margin-bottom:5px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text-soft);text-transform:uppercase;letter-spacing:.05em;">Component</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-soft);text-transform:uppercase;letter-spacing:.05em;">Score</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-soft);text-transform:uppercase;letter-spacing:.05em;">Out of</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-soft);text-transform:uppercase;letter-spacing:.05em;">Wt %</div>
+        <div></div>
+      </div>
+      <div id="grade-components-list"></div>
+      <button class="btn btn-secondary btn-sm" onclick="addComponentRow()" type="button" style="margin-top:6px;">＋ Add component</button>
+      <div id="grade-multi-total" style="display:none;margin-top:10px;padding:9px 12px;background:var(--sage-pale);border-radius:var(--radius-sm);font-size:13px;color:var(--sage-dark);">
+        <span style="font-weight:600;">Term total:</span> <span id="grade-multi-total-val"></span>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-grade')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveGrade()">Save Grade</button>
+    </div>
   </div>
 </div>
 <div class="modal-overlay hidden" id="modal-add-task">
@@ -606,6 +640,41 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-milestone-prompt')">Skip</button>
       <button class="btn btn-primary" onclick="saveMilestoneFromPrompt()">🏆 Add Milestone</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT TASK MODAL -->
+<div class="modal-overlay hidden" id="modal-edit-task">
+  <div class="modal">
+    <div class="modal-title">Edit Task</div>
+    <div class="form-group"><label>Task Title</label><input type="text" id="edit-task-title" placeholder="e.g. Math Practice Paper 3"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Subject (optional)</label><input type="text" id="edit-task-subject" placeholder="e.g. Mathematics"></div>
+      <div class="form-group"><label>Priority</label><select id="edit-task-priority"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
+    </div>
+    <div class="form-group"><label>Due Date (optional)</label><input type="date" id="edit-task-due"></div>
+    <div class="form-group"><label>Notes (optional)</label><textarea id="edit-task-notes" rows="2" placeholder="Any additional notes..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-edit-task')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditTask()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT EVENT MODAL -->
+<div class="modal-overlay hidden" id="modal-edit-event">
+  <div class="modal">
+    <div class="modal-title">Edit Event</div>
+    <div class="form-group"><label>Event Title</label><input type="text" id="edit-event-title" placeholder="e.g. Science Test"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Date</label><input type="date" id="edit-event-date"></div>
+      <div class="form-group"><label>Category</label><select id="edit-event-category"><option value="exam">Exam / Test</option><option value="holiday">Holiday</option><option value="cca">CCA</option><option value="school">School Event</option><option value="personal">Personal</option></select></div>
+    </div>
+    <div class="form-group"><label>Notes (optional)</label><textarea id="edit-event-notes" rows="2" placeholder="Any details..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-edit-event')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditEvent()">Save Changes</button>
     </div>
   </div>
 </div>
@@ -1114,21 +1183,85 @@ async function saveSubject() {
   closeModal('modal-add-subject'); renderGrades(); toast('Subject added!');
   await appendRow('subjects', SHEET_HEADERS.subjects, obj);
 }
+// ── Grade subject change: switch single/multi mode ────────────────
+function onGradeSubjectChange() {
+  const subs = S.subjects[S.activeChildId] || [];
+  const sid = $('grade-subject').value;
+  const subj = subs.find(s => s.id === sid);
+  const isLang = subj && subj.type === 'language';
+  $('grade-single-mode').style.display = isLang ? 'none' : 'block';
+  $('grade-multi-mode').style.display  = isLang ? 'block' : 'none';
+  if (isLang && $('grade-components-list').children.length === 0) addComponentRow();
+}
+let _compRowId = 0;
+function addComponentRow(name='', scored='', max='', weight='') {
+  const id = 'cr_' + (_compRowId++);
+  const div = document.createElement('div');
+  div.className = 'component-row';
+  div.id = id;
+  div.innerHTML = `
+    <input type="text"   placeholder="e.g. P1 Composition" value="${name}"   oninput="updateMultiTotal()">
+    <input type="number" placeholder="72"  min="0"  value="${scored}" oninput="updateMultiTotal()">
+    <input type="number" placeholder="100" min="1"  value="${max}"    oninput="updateMultiTotal()">
+    <input type="number" placeholder="—"  min="0" max="100" value="${weight}" oninput="updateMultiTotal()">
+    <button class="del-btn" onclick="removeComponentRow('${id}')" title="Remove">✕</button>`;
+  $('grade-components-list').appendChild(div);
+  updateMultiTotal();
+}
+function removeComponentRow(id) { const el=$(id); if(el) el.remove(); updateMultiTotal(); }
+function updateMultiTotal() {
+  const rows = $('grade-components-list').querySelectorAll('.component-row');
+  let ts=0, tm=0, valid=false;
+  rows.forEach(row => {
+    const inp = row.querySelectorAll('input');
+    const s=parseFloat(inp[1].value), m=parseFloat(inp[2].value);
+    if(!isNaN(s)&&!isNaN(m)&&m>0){ts+=s;tm+=m;valid=true;}
+  });
+  const tot=$('grade-multi-total');
+  if(valid){tot.style.display='block';$('grade-multi-total-val').textContent=`${ts}/${tm} = ${(ts/tm*100).toFixed(1)}%`;}
+  else{tot.style.display='none';}
+}
 function openAddGrade() {
   if (!child()) { toast('Select a child first'); return; }
   const subs = S.subjects[S.activeChildId] || [];
   if (!subs.length) { toast('Add a subject first'); return; }
   $('grade-subject').innerHTML = subs.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-  $('grade-paper').value = ''; $('grade-scored').value = ''; $('grade-max').value = '100'; $('grade-weight').value = '';
+  $('grade-paper').value=''; $('grade-scored').value=''; $('grade-max').value='100'; $('grade-weight').value='';
+  $('grade-components-list').innerHTML='';
+  $('grade-multi-total').style.display='none';
+  $('grade-modal-title').textContent='Add Grade Entry';
+  onGradeSubjectChange();
   openModal('modal-add-grade');
 }
 async function saveGrade() {
-  const scored = parseFloat($('grade-scored').value), max = parseFloat($('grade-max').value);
-  if (isNaN(scored) || isNaN(max) || max <= 0) { toast('Enter valid scores'); return; }
-  const obj = { id: uid(), childId: S.activeChildId, subjectId: $('grade-subject').value, term: $('grade-term').value, paper: $('grade-paper').value.trim(), scored, max, weight: parseFloat($('grade-weight').value) || '' };
-  S.grades[S.activeChildId].push(obj);
-  closeModal('modal-add-grade'); renderGrades(); toast('Grade saved!');
-  await appendRow('grades', SHEET_HEADERS.grades, obj);
+  const subs = S.subjects[S.activeChildId] || [];
+  const sid = $('grade-subject').value;
+  const subj = subs.find(s => s.id === sid);
+  const isLang = subj && subj.type === 'language';
+  const term = $('grade-term').value;
+  if (!isLang) {
+    const scored=parseFloat($('grade-scored').value), max=parseFloat($('grade-max').value);
+    if(isNaN(scored)||isNaN(max)||max<=0){toast('Enter valid scores');return;}
+    const obj={id:uid(),childId:S.activeChildId,subjectId:sid,term,paper:$('grade-paper').value.trim(),scored,max,weight:parseFloat($('grade-weight').value)||''};
+    S.grades[S.activeChildId].push(obj);
+    closeModal('modal-add-grade');renderGrades();toast('Grade saved!');
+    await appendRow('grades',SHEET_HEADERS.grades,obj);
+  } else {
+    const rows=$('grade-components-list').querySelectorAll('.component-row');
+    if(!rows.length){toast('Add at least one component');return;}
+    const toSave=[]; let valid=true;
+    rows.forEach(row=>{
+      const inp=row.querySelectorAll('input');
+      const scored=parseFloat(inp[1].value),max=parseFloat(inp[2].value);
+      if(isNaN(scored)||isNaN(max)||max<=0){valid=false;return;}
+      toSave.push({id:uid(),childId:S.activeChildId,subjectId:sid,term,paper:inp[0].value.trim(),scored,max,weight:parseFloat(inp[3].value)||''});
+    });
+    if(!valid){toast('Fill in score and max score for each component');return;}
+    closeModal('modal-add-grade');
+    for(const obj of toSave){S.grades[S.activeChildId].push(obj);await appendRow('grades',SHEET_HEADERS.grades,obj);}
+    renderGrades();
+    toast(`${toSave.length} component${toSave.length>1?'s':''} saved!`);
+  }
 }
 async function deleteGrade(gid) {
   S.grades[S.activeChildId] = S.grades[S.activeChildId].filter(g => g.id !== gid);
@@ -1225,9 +1358,42 @@ async function saveMilestoneFromPrompt() {
 }
 async function deleteTask(tid) {
   S.tasks[S.activeChildId] = S.tasks[S.activeChildId].filter(t => t.id !== tid);
-  renderTasks();
+  renderTasks(); renderDashboard();
   await deleteRow('tasks', tid);
 }
+let _editingTaskId = null;
+function openEditTask(tid) {
+  const t = (S.tasks[S.activeChildId] || []).find(t => t.id === tid);
+  if (!t) return;
+  _editingTaskId = tid;
+  $('edit-task-title').value = t.title || '';
+  $('edit-task-subject').value = t.subject || '';
+  $('edit-task-priority').value = t.priority || 'medium';
+  $('edit-task-due').value = t.due || '';
+  $('edit-task-notes').value = t.notes || '';
+  openModal('modal-edit-task');
+  setTimeout(() => $('edit-task-title').focus(), 100);
+}
+async function saveEditTask() {
+  const t = (S.tasks[S.activeChildId] || []).find(t => t.id === _editingTaskId);
+  if (!t) return;
+  const title = $('edit-task-title').value.trim();
+  if (!title) { $('edit-task-title').focus(); return; }
+  t.title    = title;
+  t.subject  = $('edit-task-subject').value.trim();
+  t.priority = $('edit-task-priority').value;
+  t.due      = $('edit-task-due').value;
+  t.notes    = $('edit-task-notes').value.trim();
+  closeModal('modal-edit-task');
+  renderTasks(); renderDashboard();
+  toast('Task updated!');
+  // Update each changed field in Sheets
+  for (const field of ['title','subject','priority','due','notes']) {
+    await updateCell('tasks', _editingTaskId, field, t[field]);
+  }
+  _editingTaskId = null;
+}
+
 function renderTasks() {
   const c = child(); $('tasks-no-child').classList.toggle('show', !c); const cont = $('tasks-content');
   if (!c) { cont.innerHTML = ''; return; }
@@ -1235,7 +1401,10 @@ function renderTasks() {
   if (!tasks.length) { cont.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">No tasks yet</div><div class="empty-sub">Click "＋ Add Task" to add homework or assignments.</div></div>'; return; }
   const rt = t => `<div class="task-item ${t.done ? 'done' : ''}">
     <div class="task-check ${t.done ? 'checked' : ''}" onclick="toggleTask('${t.id}')">${t.done ? '✓' : ''}</div>
-    <div style="flex:1;"><div class="task-title-text">${t.title}</div><div class="task-meta">${t.subject ? t.subject + ' · ' : ''}${t.due ? 'Due ' + fmtDate(t.due) : 'No due date'}</div></div>
+    <div style="flex:1;cursor:pointer;" onclick="openEditTask('${t.id}')">
+      <div class="task-title-text">${t.title}</div>
+      <div class="task-meta">${t.subject ? t.subject + ' · ' : ''}${t.due ? 'Due ' + fmtDate(t.due) : 'No due date'} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
+    </div>
     <span class="priority-${t.priority === 'high' ? 'high' : t.priority === 'medium' ? 'med' : 'low'}">${t.priority}</span>
     <button class="del-btn" onclick="deleteTask('${t.id}')">✕</button>
   </div>`;
@@ -1243,6 +1412,7 @@ function renderTasks() {
   cont.innerHTML = (pending.length ? `<div style="font-weight:600;font-size:13px;color:var(--text-soft);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;">Pending (${pending.length})</div>${pending.map(rt).join('')}` : '')
     + (done.length ? `<div style="font-weight:600;font-size:13px;color:var(--text-soft);margin:18px 0 8px;text-transform:uppercase;letter-spacing:0.06em;">Completed (${done.length})</div>${done.map(rt).join('')}` : '');
 }
+
 
 // ═══════════════════════════════════════════════════════════════════
 // CALENDAR
@@ -1315,9 +1485,39 @@ async function saveEvent() {
 }
 async function deleteEvent(eid) {
   S.events[S.activeChildId] = S.events[S.activeChildId].filter(e => e.id !== eid);
-  renderCalendar();
+  renderCalendar(); renderDashboard();
   await deleteRow('events', eid);
 }
+let _editingEventId = null;
+function openEditEvent(eid) {
+  const e = (S.events[S.activeChildId] || []).find(e => e.id === eid);
+  if (!e) return;
+  _editingEventId = eid;
+  $('edit-event-title').value = e.title || '';
+  $('edit-event-date').value = e.date || '';
+  $('edit-event-category').value = e.category || 'personal';
+  $('edit-event-notes').value = e.notes || '';
+  openModal('modal-edit-event');
+  setTimeout(() => $('edit-event-title').focus(), 100);
+}
+async function saveEditEvent() {
+  const e = (S.events[S.activeChildId] || []).find(e => e.id === _editingEventId);
+  if (!e) return;
+  const title = $('edit-event-title').value.trim();
+  if (!title) { $('edit-event-title').focus(); return; }
+  e.title    = title;
+  e.date     = $('edit-event-date').value;
+  e.category = $('edit-event-category').value;
+  e.notes    = $('edit-event-notes').value.trim();
+  closeModal('modal-edit-event');
+  renderCalendar(); renderDashboard();
+  toast('Event updated!');
+  for (const field of ['title','date','category','notes']) {
+    await updateCell('events', _editingEventId, field, e[field]);
+  }
+  _editingEventId = null;
+}
+
 const catEmoji = { exam:'📝', holiday:'🏖️', cca:'🎯', school:'🏫', personal:'⭐' };
 function renderCalendar() {
   const c = child(); $('cal-no-child').classList.toggle('show', !c);
@@ -1346,7 +1546,14 @@ function renderCalendar() {
   const list = $('events-list');
   if (!c || !events.length) { list.innerHTML = '<div class="empty-state" style="padding:24px 0;"><div class="empty-icon">📅</div><div class="empty-title">No events</div><div class="empty-sub">Click "＋ Add Event" or any date on the calendar.</div></div>'; return; }
   list.innerHTML = [...events].sort((a, b) => a.date.localeCompare(b.date)).map(e => `
-    <div class="task-item"><div style="font-size:22px;">${catEmoji[e.category] || '⭐'}</div><div style="flex:1;"><div class="task-title-text">${e.title}</div><div class="task-meta">${fmtDate(e.date)} · ${e.category}${e.notes ? ' · ' + e.notes : ''}</div></div><button class="del-btn" onclick="deleteEvent('${e.id}')">✕</button></div>`).join('');
+    <div class="task-item">
+      <div style="font-size:22px;">${catEmoji[e.category] || '⭐'}</div>
+      <div style="flex:1;cursor:pointer;" onclick="openEditEvent('${e.id}')">
+        <div class="task-title-text">${e.title}</div>
+        <div class="task-meta">${fmtDate(e.date)} · ${e.category}${e.notes ? ' · ' + e.notes : ''} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
+      </div>
+      <button class="del-btn" onclick="deleteEvent('${e.id}')">✕</button>
+    </div>`).join('');
 }
 function calPrev() { S.calMonth--; if (S.calMonth < 0) { S.calMonth = 11; S.calYear--; } renderCalendar(); }
 function calNext() { S.calMonth++; if (S.calMonth > 11) { S.calMonth = 0; S.calYear++; } renderCalendar(); }
@@ -1453,11 +1660,11 @@ function renderDashboard() {
       else if (daysUntil === 0) { badge = 'Today'; badgeCls = 'soon'; }
       else if (daysUntil === 1) { badge = 'Tomorrow'; badgeCls = 'soon'; }
       else { badge = `In ${daysUntil}d`; badgeCls = ''; }
-      return `<div class="upcoming-item ${isOverdue ? 'overdue' : ''}">
+      return `<div class="upcoming-item ${isOverdue ? 'overdue' : ''}" style="cursor:pointer;" onclick="openEditTask('${t.id}')">
         <div class="upcoming-item-icon">✅</div>
         <div style="flex:1;">
           <div class="upcoming-item-title">${t.title}</div>
-          <div class="upcoming-item-meta">${t.subject || 'No subject'} · Due ${fmtDate(t.due)}</div>
+          <div class="upcoming-item-meta">${t.subject || 'No subject'} · Due ${fmtDate(t.due)} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
         </div>
         <div class="due-badge ${badgeCls}">${badge}</div>
       </div>`;
@@ -1479,11 +1686,11 @@ function renderDashboard() {
       else if (daysUntil === 1) { badge = 'Tomorrow!'; badgeCls = 'soon'; }
       else if (daysUntil <= 3) { badge = `In ${daysUntil}d`; badgeCls = 'soon'; }
       else { badge = `In ${daysUntil}d`; badgeCls = ''; }
-      return `<div class="upcoming-item exam">
+      return `<div class="upcoming-item exam" style="cursor:pointer;" onclick="openEditEvent('${e.id}')">
         <div class="upcoming-item-icon">📝</div>
         <div style="flex:1;">
           <div class="upcoming-item-title">${e.title}</div>
-          <div class="upcoming-item-meta">${fmtDate(e.date)}${e.notes ? ' · ' + e.notes : ''}</div>
+          <div class="upcoming-item-meta">${fmtDate(e.date)}${e.notes ? ' · ' + e.notes : ''} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
         </div>
         <div class="due-badge ${badgeCls}">${badge}</div>
       </div>`;
