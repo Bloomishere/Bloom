@@ -327,6 +327,24 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
 .grade-term-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-soft);padding:6px 0 4px;border-bottom:1px solid var(--parchment);margin-bottom:4px;}
 .grade-term-total{font-size:12px;color:var(--sage-dark);font-weight:600;padding:5px 0 2px;text-align:right;}
 
+
+/* ── Reflection cards ───────────────────────────────────── */
+.reflection-card{background:var(--white);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);margin-bottom:14px;}
+.reflection-period{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 10px;border-radius:10px;background:var(--sage-pale);color:var(--sage-dark);margin-bottom:12px;}
+.reflection-subject{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px;background:var(--sky-pale);color:var(--sky);margin-left:6px;}
+.reflection-section{margin-bottom:12px;}
+.reflection-section-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-soft);margin-bottom:4px;}
+.reflection-section-body{font-size:13px;line-height:1.65;color:var(--text);}
+.reflection-target{background:var(--amber-pale);border-left:3px solid var(--amber);border-radius:0 8px 8px 0;padding:8px 12px;font-size:13px;color:var(--bark);line-height:1.6;margin-top:4px;}
+
+/* ── Revision warning cards ─────────────────────────────── */
+.revision-warning{display:flex;align-items:flex-start;gap:12px;padding:13px 16px;background:var(--amber-pale);border:1.5px solid var(--amber-light);border-radius:var(--radius-sm);margin-bottom:8px;}
+.revision-warning-icon{font-size:20px;flex-shrink:0;}
+.revision-warning-title{font-size:13px;font-weight:600;color:var(--bark);}
+.revision-warning-meta{font-size:11px;color:var(--amber);margin-top:2px;}
+.revision-warning-btn{background:var(--amber);color:white;border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0;margin-top:2px;white-space:nowrap;}
+.revision-warning-btn:hover{opacity:0.9;}
+
 .sheet-banner{
   background:var(--sky-pale);border:1.5px solid var(--sky);
   border-radius:var(--radius-sm);padding:10px 14px;
@@ -426,7 +444,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
       <div class="nav-item" data-page="grades" onclick="showPage('grades')"><span class="nav-icon">📊</span> Grades</div>
       <div class="nav-item" data-page="tasks" onclick="showPage('tasks')"><span class="nav-icon">✅</span> Homework</div>
       <div class="nav-item" data-page="calendar" onclick="showPage('calendar')"><span class="nav-icon">📅</span> Calendar</div>
-      <div class="nav-item" data-page="journal" onclick="showPage('journal')"><span class="nav-icon">📓</span> Journal</div>
+      <div class="nav-item" data-page="journal" onclick="showPage('journal')"><span class="nav-icon">📓</span> Reflection</div>
       <div class="nav-item" data-page="milestones" onclick="showPage('milestones')"><span class="nav-icon">🏆</span> Milestones</div>
     </div>
     <div class="sidebar-bottom">
@@ -459,6 +477,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
           <div id="dash-upcoming-exams"></div>
         </div>
       </div>
+      <div id="dash-revision-warnings"></div>
       <div class="card"><div style="font-family:var(--serif);font-size:17px;font-weight:700;margin-bottom:14px;">Recent Activity</div><div id="recent-activity"><div class="empty-state" style="padding:24px 0;"><div class="empty-icon">🌱</div><div class="empty-sub">Activity will appear here once you start adding data.</div></div></div></div>
     </div>
 
@@ -487,7 +506,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
     </div>
 
     <div class="page" id="page-journal">
-      <div class="page-header"><div><div class="page-title">Growth Journal</div><div class="page-sub">Capture reflections and observations</div></div><button class="btn btn-primary btn-sm" onclick="openAddJournal()">＋ Add Entry</button></div>
+      <div class="page-header"><div><div class="page-title">Reflection</div><div class="page-sub">End-of-term & end-of-year reviews — what worked, what to improve, what to aim for</div></div><button class="btn btn-primary btn-sm" onclick="openAddReflection()">＋ Add Reflection</button></div>
       <div class="no-child-banner" id="journal-no-child">👆 Select or add a child first.</div>
       <div id="journal-content"></div>
     </div>
@@ -615,15 +634,39 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
   </div>
 </div>
 <div class="modal-overlay hidden" id="modal-add-journal">
-  <div class="modal">
-    <div class="modal-title">Add Journal Entry</div>
-    <div class="form-group"><label>Date</label><input type="date" id="journal-date"></div>
-    <div class="form-group"><label>Entry</label><textarea id="journal-text" rows="4" placeholder="What did you observe or want to remember today?"></textarea></div>
+  <div class="modal" style="width:540px;">
+    <div class="modal-title" id="reflection-modal-title">Add Reflection</div>
     <div class="form-row">
-      <div class="form-group"><label>Mood</label><select id="journal-mood"><option value="😊">😊 Happy</option><option value="😤">😤 Frustrated</option><option value="😴">😴 Tired</option><option value="🌟">🌟 Proud</option><option value="😰">😰 Anxious</option><option value="😌">😌 Calm</option></select></div>
-      <div class="form-group"><label>Growth Area Tag</label><select id="journal-tag"><option>Academic</option><option>Social</option><option>Emotional</option><option>Character</option><option>Physical</option><option>Creative</option></select></div>
+      <div class="form-group"><label>Period</label>
+        <select id="ref-period">
+          <option value="term1">Term 1</option><option value="term2">Term 2</option>
+          <option value="term3">Term 3</option><option value="term4">Term 4</option>
+          <option value="year">Full Year</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Year</label>
+        <input type="number" id="ref-year" placeholder="e.g. 2025" min="2020" max="2040">
+      </div>
     </div>
-    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-add-journal')">Cancel</button><button class="btn btn-primary" onclick="saveJournal()">Save Entry</button></div>
+    <div class="form-group"><label>Subject <span style="font-weight:400;color:var(--text-soft);">(optional — leave blank for general reflection)</span></label>
+      <input type="text" id="ref-subject" placeholder="e.g. Mathematics, Science — or leave blank">
+    </div>
+    <div class="form-group"><label>✨ Highlights & what went well</label>
+      <textarea id="ref-highlights" rows="2" placeholder="What did the child do well this term? What are you proud of?"></textarea>
+    </div>
+    <div class="form-group"><label>💬 Teacher's comments / feedback received</label>
+      <textarea id="ref-teacher" rows="2" placeholder="Paste or summarise feedback from teachers, report cards..."></textarea>
+    </div>
+    <div class="form-group"><label>🔧 Areas to improve</label>
+      <textarea id="ref-improve" rows="2" placeholder="e.g. Needs to show working in Maths, reading comprehension, time management..."></textarea>
+    </div>
+    <div class="form-group"><label>🎯 Targets for next term / year <span style="font-weight:400;color:var(--text-soft);">(qualitative)</span></label>
+      <textarea id="ref-targets" rows="2" placeholder="e.g. Read 2 books a month, improve understanding of fractions, ask more questions in class..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-journal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveReflection()">Save Reflection</button>
+    </div>
   </div>
 </div>
 <div class="modal-overlay hidden" id="modal-add-milestone">
@@ -669,6 +712,13 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
     </div>
     <div class="form-group"><label>Due Date (optional)</label><input type="date" id="edit-task-due"></div>
     <div class="form-group"><label>Notes (optional)</label><textarea id="edit-task-notes" rows="2" placeholder="Any additional notes..."></textarea></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--sage-pale);border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;" onclick="toggleEditTaskDone()">
+      <div id="edit-task-done-check" style="width:20px;height:20px;border-radius:50%;border:2px solid var(--sage);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;transition:all 0.15s;"></div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--sage-dark);">Mark as completed</div>
+        <div style="font-size:11px;color:var(--text-soft);">Tap to toggle — if completed early, you'll be asked to log a milestone</div>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-edit-task')">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditTask()">Save Changes</button>
@@ -692,6 +742,38 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
     </div>
   </div>
 </div>
+
+<!-- ADD REVISION TASK MODAL -->
+<div class="modal-overlay hidden" id="modal-add-revision">
+  <div class="modal">
+    <div class="modal-title">📚 Schedule Revision</div>
+    <div style="font-size:13px;color:var(--text-soft);margin-bottom:16px;line-height:1.5;">Create a recurring revision task for a subject ahead of an upcoming exam.</div>
+    <div class="form-group"><label>Subject</label>
+      <select id="rev-subject-sel"></select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>First revision date</label><input type="date" id="rev-start-date"></div>
+      <div class="form-group"><label>Repeat</label>
+        <select id="rev-recur">
+          <option value="once">Once only</option>
+          <option value="weekly" selected>Weekly</option>
+          <option value="biweekly">Fortnightly</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" id="rev-until-group">
+      <label>Repeat until</label><input type="date" id="rev-until-date">
+    </div>
+    <div class="form-group"><label>Notes (optional)</label>
+      <input type="text" id="rev-notes" placeholder="e.g. Focus on Chapter 4–6, past papers...">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-revision')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRevisionTask()">Schedule</button>
+    </div>
+  </div>
+</div>
+
 
 <div id="toast"></div>
 
@@ -867,9 +949,9 @@ const SHEET_HEADERS = {
   children:   ['id','name','level','yearStart','yearEnd'],
   subjects:   ['id','childId','name','target','type'],
   grades:     ['id','childId','subjectId','term','paper','scored','max','weight'],
-  tasks:      ['id','childId','title','subject','priority','due','notes','done'],
+  tasks:      ['id','childId','title','subject','priority','due','notes','done','isRevision'],
   events:     ['id','childId','title','date','category','notes'],
-  journal:    ['id','childId','date','text','mood','tag'],
+  journal:    ['id','childId','period','year','subject','highlights','teacherComments','improvements','targets'],
   milestones: ['id','childId','title','desc','date','category'],
   _meta:      ['key','value']
 };
@@ -1005,6 +1087,7 @@ function parseSheetData(sheetName, headers, rows) {
     rows.forEach(r => {
       const o = toObj(r);
       o.done = o.done === 'true';
+      o.isRevision = o.isRevision || '';
       if (S.tasks[o.childId]) S.tasks[o.childId].push(o);
     });
   }
@@ -1017,6 +1100,12 @@ function parseSheetData(sheetName, headers, rows) {
   else if (sheetName === 'journal') {
     rows.forEach(r => {
       const o = toObj(r);
+      // backward compat: old rows had date/text/mood/tag — map to new schema gracefully
+      if (o.date && o.text && !o.period) {
+        o.period = 'term1'; o.year = o.date ? o.date.slice(0,4) : '';
+        o.highlights = o.text; o.teacherComments = ''; o.improvements = ''; o.targets = '';
+        o.subject = o.tag || '';
+      }
       if (S.journal[o.childId]) S.journal[o.childId].push(o);
     });
   }
@@ -1437,34 +1526,85 @@ async function deleteTask(tid) {
   await deleteRow('tasks', tid);
 }
 let _editingTaskId = null;
+let _editTaskDoneState = false;
+
+function toggleEditTaskDone() {
+  _editTaskDoneState = !_editTaskDoneState;
+  const chk = $('edit-task-done-check');
+  if (_editTaskDoneState) {
+    chk.style.background = 'var(--sage)';
+    chk.style.borderColor = 'var(--sage)';
+    chk.style.color = 'white';
+    chk.textContent = '✓';
+  } else {
+    chk.style.background = '';
+    chk.style.borderColor = 'var(--sage)';
+    chk.style.color = '';
+    chk.textContent = '';
+  }
+}
+
 function openEditTask(tid) {
   const t = (S.tasks[S.activeChildId] || []).find(t => t.id === tid);
   if (!t) return;
   _editingTaskId = tid;
+  _editTaskDoneState = t.done || false;
   $('edit-task-title').value = t.title || '';
   $('edit-task-subject').value = t.subject || '';
   $('edit-task-priority').value = t.priority || 'medium';
   $('edit-task-due').value = t.due || '';
   $('edit-task-notes').value = t.notes || '';
+  // Sync done toggle UI
+  const chk = $('edit-task-done-check');
+  if (_editTaskDoneState) {
+    chk.style.background = 'var(--sage)'; chk.style.borderColor = 'var(--sage)';
+    chk.style.color = 'white'; chk.textContent = '✓';
+  } else {
+    chk.style.background = ''; chk.style.borderColor = 'var(--sage)';
+    chk.style.color = ''; chk.textContent = '';
+  }
   openModal('modal-edit-task');
   setTimeout(() => $('edit-task-title').focus(), 100);
 }
+
 async function saveEditTask() {
   const t = (S.tasks[S.activeChildId] || []).find(t => t.id === _editingTaskId);
   if (!t) return;
   const title = $('edit-task-title').value.trim();
   if (!title) { $('edit-task-title').focus(); return; }
+
+  const wasNotDone = !t.done;
+  const nowDone = _editTaskDoneState;
+
   t.title    = title;
   t.subject  = $('edit-task-subject').value.trim();
   t.priority = $('edit-task-priority').value;
   t.due      = $('edit-task-due').value;
   t.notes    = $('edit-task-notes').value.trim();
+  t.done     = nowDone;
+
   closeModal('modal-edit-task');
   renderTasks(); renderDashboard();
   toast('Task updated!');
-  // Update each changed field in Sheets
-  for (const field of ['title','subject','priority','due','notes']) {
+
+  for (const field of ['title','subject','priority','due','notes','done']) {
     await updateCell('tasks', _editingTaskId, field, t[field]);
+  }
+
+  // If just marked done and completed early — offer milestone
+  if (wasNotDone && nowDone && t.due) {
+    const today = new Date(todayStr() + 'T00:00:00');
+    const due   = new Date(t.due + 'T00:00:00');
+    const daysEarly = Math.round((due - today) / 86400000);
+    if (daysEarly >= 1) {
+      _pendingMilestoneTask = t;
+      const daysLabel = daysEarly === 1 ? '1 day early' : daysEarly + ' days early';
+      $('milestone-prompt-msg').textContent = '"' + t.title + '" was completed ' + daysLabel + '! Would you like to log this as a milestone?';
+      const suggested = t.title.length > 40 ? t.title.substring(0,40) + '…' : t.title;
+      $('mp-title').value = 'Completed "' + suggested + '" ahead of schedule!';
+      $('mp-category').value = 'academic';
+      openModal('modal-milestone-prompt');
+    }
   }
   _editingTaskId = null;
 }
@@ -1636,32 +1776,95 @@ function calNext() { S.calMonth++; if (S.calMonth > 11) { S.calMonth = 0; S.calY
 // ═══════════════════════════════════════════════════════════════════
 // JOURNAL
 // ═══════════════════════════════════════════════════════════════════
-function openAddJournal() { if (!child()) { toast('Select a child first'); return; } $('journal-date').value = todayStr(); $('journal-text').value = ''; openModal('modal-add-journal'); setTimeout(() => $('journal-text').focus(), 100); }
-async function saveJournal() {
-  const text = $('journal-text').value.trim(); if (!text) { $('journal-text').focus(); return; }
-  const obj = { id: uid(), childId: S.activeChildId, date: $('journal-date').value, text, mood: $('journal-mood').value, tag: $('journal-tag').value };
+// ═══════════════════════════════════════════════════════════════════
+// REFLECTION (replaces Journal)
+// ═══════════════════════════════════════════════════════════════════
+const PERIOD_LABELS = {
+  term1: 'Term 1', term2: 'Term 2', term3: 'Term 3', term4: 'Term 4', year: 'Full Year'
+};
+function openAddReflection() {
+  if (!child()) { toast('Select a child first'); return; }
+  const yr = new Date().getFullYear();
+  $('ref-period').value = 'term1';
+  $('ref-year').value = yr;
+  $('ref-subject').value = '';
+  $('ref-highlights').value = '';
+  $('ref-teacher').value = '';
+  $('ref-improve').value = '';
+  $('ref-targets').value = '';
+  $('reflection-modal-title').textContent = 'Add Reflection';
+  openModal('modal-add-journal');
+  setTimeout(() => $('ref-highlights').focus(), 100);
+}
+// Keep openAddJournal as alias so old code doesn't break
+function openAddJournal() { openAddReflection(); }
+
+async function saveReflection() {
+  const highlights = $('ref-highlights').value.trim();
+  const improvements = $('ref-improve').value.trim();
+  const targets = $('ref-targets').value.trim();
+  if (!highlights && !improvements && !targets) {
+    toast('Please fill in at least one section'); return;
+  }
+  const obj = {
+    id: uid(), childId: S.activeChildId,
+    period: $('ref-period').value,
+    year: $('ref-year').value || new Date().getFullYear(),
+    subject: $('ref-subject').value.trim(),
+    highlights,
+    teacherComments: $('ref-teacher').value.trim(),
+    improvements,
+    targets
+  };
   S.journal[S.activeChildId].push(obj);
-  closeModal('modal-add-journal'); renderJournal(); toast('Journal entry saved!');
+  closeModal('modal-add-journal');
+  renderJournal();
+  toast('Reflection saved! 📓');
   await appendRow('journal', SHEET_HEADERS.journal, obj);
 }
+// Keep saveJournal as alias
+async function saveJournal() { await saveReflection(); }
+
 async function deleteJournal(jid) {
   S.journal[S.activeChildId] = S.journal[S.activeChildId].filter(j => j.id !== jid);
   renderJournal();
   await deleteRow('journal', jid);
 }
+
 function renderJournal() {
   const c = child(); $('journal-no-child').classList.toggle('show', !c); const cont = $('journal-content');
   if (!c) { cont.innerHTML = ''; return; }
   const entries = S.journal[c.id] || [];
-  if (!entries.length) { cont.innerHTML = '<div class="empty-state"><div class="empty-icon">📓</div><div class="empty-title">No entries yet</div><div class="empty-sub">Click "＋ Add Entry" to write your first journal entry.</div></div>'; return; }
-  cont.innerHTML = [...entries].sort((a, b) => b.date.localeCompare(a.date)).map(j => `
-    <div class="journal-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <div class="journal-date">${fmtDate(j.date)}</div>
-        <div style="display:flex;align-items:center;gap:8px;"><span class="tag-chip">${j.tag}</span><button class="del-btn" onclick="deleteJournal('${j.id}')">✕</button></div>
+  if (!entries.length) {
+    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">📓</div><div class="empty-title">No reflections yet</div><div class="empty-sub">After each term or year, add a reflection to capture what went well, teacher feedback, and targets for next time.</div></div>`;
+    return;
+  }
+  // Sort: most recent year+period first
+  const periodOrder = { year:0, term4:1, term3:2, term2:3, term1:4 };
+  const sorted = [...entries].sort((a, b) => {
+    const yDiff = (parseInt(b.year)||0) - (parseInt(a.year)||0);
+    if (yDiff !== 0) return yDiff;
+    return (periodOrder[a.period]||5) - (periodOrder[b.period]||5);
+  });
+  cont.innerHTML = sorted.map(r => {
+    const periodLabel = PERIOD_LABELS[r.period] || r.period;
+    const yearLabel = r.year || '';
+    const sections = [
+      { label: '✨ Highlights', body: r.highlights },
+      { label: '💬 Teacher\'s comments', body: r.teacherComments },
+      { label: '🔧 Areas to improve', body: r.improvements },
+    ].filter(s => s.body);
+    return `<div class="reflection-card">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;">
+        <div>
+          <span class="reflection-period">📅 ${periodLabel} ${yearLabel}</span>${r.subject ? `<span class="reflection-subject">📚 ${r.subject}</span>` : '<span class="reflection-subject" style="background:var(--stone-pale);color:var(--text-soft);">General</span>'}
+        </div>
+        <button class="del-btn" onclick="deleteJournal('${r.id}')">✕</button>
       </div>
-      <div class="journal-text-content"><span class="mood-emoji">${j.mood}</span>${j.text}</div>
-    </div>`).join('');
+      ${sections.map(s => `<div class="reflection-section"><div class="reflection-section-label">${s.label}</div><div class="reflection-section-body">${s.body}</div></div>`).join('')}
+      ${r.targets ? `<div class="reflection-section"><div class="reflection-section-label">🎯 Targets for next period</div><div class="reflection-target">${r.targets}</div></div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1697,6 +1900,60 @@ function renderMilestones() {
 // ═══════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// REVISION TASKS
+// ═══════════════════════════════════════════════════════════════════
+let _revisionSubjectName = '';
+
+function openAddRevision(subjectName) {
+  if (!child()) { toast('Select a child first'); return; }
+  const subs = S.subjects[S.activeChildId] || [];
+  if (!subs.length) { toast('Add a subject first'); return; }
+  $('rev-subject-sel').innerHTML = subs.map(s => `<option value="${s.name}" ${s.name === subjectName ? 'selected' : ''}>${s.name}</option>`).join('');
+  // Default start = today, until = 4 weeks from today
+  const startD = new Date(); startD.setDate(startD.getDate() + 1);
+  const untilD = new Date(); untilD.setDate(untilD.getDate() + 28);
+  const localStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  $('rev-start-date').value = localStr(startD);
+  $('rev-until-date').value = localStr(untilD);
+  $('rev-recur').value = 'weekly';
+  $('rev-until-group').style.display = 'block';
+  $('rev-notes').value = '';
+  openModal('modal-add-revision');
+}
+
+async function saveRevisionTask() {
+  const subject = $('rev-subject-sel').value;
+  const startDate = $('rev-start-date').value;
+  const recur = $('rev-recur').value;
+  const until = $('rev-until-date').value;
+  const notes = $('rev-notes').value.trim();
+  if (!startDate) { toast('Please pick a start date'); return; }
+
+  const localStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const dates = [];
+  if (recur === 'once') {
+    dates.push(startDate);
+  } else {
+    const cur = new Date(startDate + 'T00:00:00');
+    const endD = until ? new Date(until + 'T00:00:00') : (() => { const d = new Date(cur); d.setMonth(d.getMonth()+1); return d; })();
+    while (cur <= endD && dates.length < 200) {
+      dates.push(localStr(cur));
+      if (recur === 'weekly') cur.setDate(cur.getDate() + 7);
+      else cur.setDate(cur.getDate() + 14);
+    }
+  }
+
+  closeModal('modal-add-revision');
+  for (const date of dates) {
+    const obj = { id: uid(), childId: S.activeChildId, title: 'Revision — ' + subject, subject, priority: 'medium', due: date, notes, done: false, isRevision: 'true' };
+    S.tasks[S.activeChildId].push(obj);
+    await appendRow('tasks', SHEET_HEADERS.tasks, obj);
+  }
+  renderTasks(); renderDashboard();
+  toast(`${dates.length} revision session${dates.length > 1 ? 's' : ''} scheduled for ${subject}! 📚`);
+}
+
 function renderDashboard() {
   const c = child(); $('dash-no-child').classList.toggle('show', !c);
   if (!c) {
@@ -1772,6 +2029,54 @@ function renderDashboard() {
     }).join('');
   } else {
     $('dash-upcoming-exams').innerHTML = '<div class="empty-state" style="padding:16px 0;"><div class="empty-icon" style="font-size:28px;">📚</div><div class="empty-sub">No exams in the next month</div></div>';
+  }
+
+  // ── Revision warnings ──────────────
+  // For each exam in next 30 days, check if any revision tasks exist for that subject
+  const revWarnings = [];
+  upcomingExams.forEach(e => {
+    const examSubject = e.title.replace(/exam|test|quiz/gi, '').trim().toLowerCase();
+    // Find subjects that match this exam by name fuzzy match
+    const matchedSubs = (S.subjects[c.id] || []).filter(s =>
+      e.title.toLowerCase().includes(s.name.toLowerCase()) ||
+      s.name.toLowerCase().includes(examSubject)
+    );
+    // Also try direct subject name from event notes
+    const allSubjects = (S.subjects[c.id] || []);
+    const subjectsToCheck = matchedSubs.length ? matchedSubs : allSubjects;
+
+    subjectsToCheck.forEach(sub => {
+      const hasRevision = (S.tasks[c.id] || []).some(t =>
+        t.isRevision === 'true' && !t.done &&
+        t.subject && t.subject.toLowerCase() === sub.name.toLowerCase() &&
+        t.due && t.due >= ts && t.due <= e.date
+      );
+      if (!hasRevision) {
+        // Avoid duplicate warnings for same subject+exam pair
+        const key = sub.name + '|' + e.id;
+        if (!revWarnings.find(w => w.key === key)) {
+          revWarnings.push({ key, subject: sub.name, examTitle: e.title, examDate: e.date });
+        }
+      }
+    });
+  });
+
+  const revWarnEl = $('dash-revision-warnings');
+  if (revWarnings.length) {
+    revWarnEl.innerHTML = `<div class="card" style="margin-bottom:16px;">
+      <div class="dash-section-title" style="color:var(--amber);">⚠️ Revision not scheduled <span style="font-size:12px;font-weight:500;color:var(--text-soft);font-family:var(--sans);">exams approaching</span></div>
+      ${revWarnings.map(w => `
+        <div class="revision-warning">
+          <div class="revision-warning-icon">📚</div>
+          <div style="flex:1;">
+            <div class="revision-warning-title">No revision scheduled for ${w.subject}</div>
+            <div class="revision-warning-meta">${w.examTitle} on ${fmtDate(w.examDate)}</div>
+          </div>
+          <button class="revision-warning-btn" onclick="openAddRevision('${w.subject}')">Schedule now</button>
+        </div>`).join('')}
+    </div>`;
+  } else {
+    revWarnEl.innerHTML = '';
   }
 
   // ── Recent activity ──────────────
