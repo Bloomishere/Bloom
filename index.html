@@ -1252,9 +1252,11 @@ async function appendRow(sheetName, headers, obj) {
       { values: [row] }
     );
     setSyncStatus('synced', 'All saved');
+    return true;
   } catch(e) {
     setSyncStatus('error', 'Save failed');
-    toast('Save failed: ' + e.message, true);
+    toast('Could not save to Google Sheets — please check your connection and try again.', true);
+    return false;
   }
 }
 
@@ -1292,29 +1294,53 @@ async function deleteRow(sheetName, id) {
   }
 }
 
-// Update a cell value (for task done/undone toggle)
-async function updateCell(sheetName, id, colName, value) {
+// updateRow — batch-updates multiple fields in a single API call.
+// fields: object like { title: 'new title', done: false }
+// Falls back to a full row rewrite if partial update fails.
+async function updateRow(sheetName, id, fields) {
   setSyncStatus('syncing', 'Saving…');
   try {
     const headers = SHEET_HEADERS[sheetName];
-    const colIdx = headers.indexOf(colName);
-    if (colIdx < 0) return;
-    const colLetter = String.fromCharCode(65 + colIdx);
 
-    const res = await sheetsReq(`${SHEETS_API}/${S.spreadsheetId}/values/${encodeURIComponent(sheetName)}!A:A`);
-    const rows = (res.values || []);
+    // Step 1: find the row index (single read)
+    const res = await sheetsReq(
+      `${SHEETS_API}/${S.spreadsheetId}/values/${encodeURIComponent(sheetName)}!A:A`
+    );
+    const rows = res.values || [];
     const rowIdx = rows.findIndex(r => r[0] === id);
-    if (rowIdx < 1) return;
+    if (rowIdx < 1) {
+      setSyncStatus('error', 'Row not found');
+      return;
+    }
+
+    // Step 2: build one batchUpdate with one range per changed field
+    const data = Object.entries(fields).map(([colName, value]) => {
+      const colIdx = headers.indexOf(colName);
+      if (colIdx < 0) return null;
+      const colLetter = String.fromCharCode(65 + colIdx);
+      return {
+        range: `${sheetName}!${colLetter}${rowIdx + 1}`,
+        values: [[String(value !== undefined && value !== null ? value : '')]]
+      };
+    }).filter(Boolean);
+
+    if (!data.length) { setSyncStatus('synced', 'All saved'); return; }
 
     await sheetsReq(
-      `${SHEETS_API}/${S.spreadsheetId}/values/${encodeURIComponent(sheetName)}!${colLetter}${rowIdx + 1}?valueInputOption=RAW`,
-      'PUT',
-      { values: [[String(value)]] }
+      `${SHEETS_API}/${S.spreadsheetId}/values:batchUpdate`,
+      'POST',
+      { valueInputOption: 'RAW', data }
     );
     setSyncStatus('synced', 'All saved');
   } catch(e) {
-    setSyncStatus('error', 'Update failed');
+    setSyncStatus('error', 'Save failed');
+    toast('Could not save changes — please try again.', true);
   }
+}
+
+// Legacy single-cell helper kept for toggleTask compatibility
+async function updateCell(sheetName, id, colName, value) {
+  return updateRow(sheetName, id, { [colName]: value });
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1393,9 +1419,7 @@ async function saveEditChild() {
   const ap = document.querySelector('.page.active');
   if (ap) renderPage(ap.id.replace('page-', ''));
   toast('Child profile updated!');
-  for (const field of ['name','level','yearStart','yearEnd']) {
-    await updateCell('children', _editingChildId, field, c[field]);
-  }
+  await updateRow('children', _editingChildId, { name:c.name, level:c.level, yearStart:c.yearStart, yearEnd:c.yearEnd });
   _editingChildId = null;
 }
 function deleteChild(cid) {
@@ -1441,9 +1465,7 @@ async function saveEditSubject() {
   closeModal('modal-edit-subject');
   renderGrades();
   toast('Subject updated!');
-  for (const field of ['name','target','type']) {
-    await updateCell('subjects', _editingSubjectId, field, s[field]);
-  }
+  await updateRow('subjects', _editingSubjectId, { name:s.name, target:s.target, type:s.type });
   _editingSubjectId = null;
 }
 
@@ -1475,9 +1497,7 @@ async function saveEditGrade() {
   closeModal('modal-edit-grade');
   renderGrades();
   toast('Grade updated!');
-  for (const field of ['term','paper','scored','max','weight']) {
-    await updateCell('grades', _editingGradeId, field, g[field]);
-  }
+  await updateRow('grades', _editingGradeId, { term:g.term, paper:g.paper, scored:g.scored, max:g.max, weight:g.weight });
   _editingGradeId = null;
 }
 
@@ -1510,9 +1530,7 @@ async function saveEditReflection() {
   closeModal('modal-edit-reflection');
   renderJournal();
   toast('Reflection updated!');
-  for (const field of ['period','year','subject','highlights','teacherComments','improvements','targets']) {
-    await updateCell('journal', _editingReflectionId, field, r[field]);
-  }
+  await updateRow('journal', _editingReflectionId, { period:r.period, year:r.year, subject:r.subject, highlights:r.highlights, teacherComments:r.teacherComments, improvements:r.improvements, targets:r.targets });
   _editingReflectionId = null;
 }
 
@@ -1541,9 +1559,7 @@ async function saveEditMilestone() {
   closeModal('modal-edit-milestone');
   renderMilestones(); renderDashboard();
   toast('Milestone updated!');
-  for (const field of ['title','desc','date','category']) {
-    await updateCell('milestones', _editingMilestoneId, field, m[field]);
-  }
+  await updateRow('milestones', _editingMilestoneId, { title:m.title, desc:m.desc, date:m.date, category:m.category });
   _editingMilestoneId = null;
 }
 
@@ -1628,9 +1644,7 @@ async function autoAdvanceLevels() {
       c.yearEnd   = localStr(ye);
       anyChanged = true;
       // Update sheet
-      await updateCell('children', c.id, 'level',     c.level);
-      await updateCell('children', c.id, 'yearStart', c.yearStart);
-      await updateCell('children', c.id, 'yearEnd',   c.yearEnd);
+      await updateRow('children', c.id, { level:c.level, yearStart:c.yearStart, yearEnd:c.yearEnd });
     }
   }
   if (anyChanged) { renderSidebar(); toast('🎉 Level updated for the new academic year!'); }
@@ -1797,10 +1811,20 @@ function renderGrades() {
 function openAddTask() { if (!child()) { toast('Select a child first'); return; } $('task-title-input').value = ''; $('task-subject').value = ''; $('task-due').value = todayStr(); $('task-notes').value = ''; openModal('modal-add-task'); setTimeout(() => $('task-title-input').focus(), 100); }
 async function saveTask() {
   const title = $('task-title-input').value.trim(); if (!title) { $('task-title-input').focus(); return; }
-  const obj = { id: uid(), childId: S.activeChildId, title, subject: $('task-subject').value.trim(), priority: $('task-priority').value, due: $('task-due').value, notes: $('task-notes').value.trim(), done: false };
+  const obj = {
+    id: uid(), childId: S.activeChildId, title,
+    subject: $('task-subject').value.trim(),
+    priority: $('task-priority').value,
+    due: $('task-due').value,
+    notes: $('task-notes').value.trim(),
+    done: false, isRevision: ''
+  };
+  // Add to local state immediately (optimistic)
   S.tasks[S.activeChildId].push(obj);
-  closeModal('modal-add-task'); renderTasks(); renderDashboard(); toast('Task added!');
-  await appendRow('tasks', SHEET_HEADERS.tasks, obj);
+  closeModal('modal-add-task'); renderTasks(); renderDashboard();
+  // Then persist — appendRow already shows toast on error
+  const ok = await appendRow('tasks', SHEET_HEADERS.tasks, obj);
+  if (ok !== false) toast('Task added!');
 }
 // Stores the task being considered for milestone promotion
 let _pendingMilestoneTask = null;
@@ -1914,9 +1938,7 @@ async function saveEditTask() {
   renderTasks(); renderDashboard();
   toast('Task updated!');
 
-  for (const field of ['title','subject','priority','due','notes','done']) {
-    await updateCell('tasks', _editingTaskId, field, t[field]);
-  }
+  await updateRow('tasks', _editingTaskId, { title:t.title, subject:t.subject, priority:t.priority, due:t.due, notes:t.notes, done:t.done });
 
   // If just marked done and completed early — offer milestone
   if (wasNotDone && nowDone && t.due) {
@@ -2069,9 +2091,7 @@ async function saveEditEvent() {
   closeModal('modal-edit-event');
   renderCalendar(); renderDashboard();
   toast('Event updated!');
-  for (const field of ['title','date','category','subject','notes']) {
-    await updateCell('events', _editingEventId, field, e[field]);
-  }
+  await updateRow('events', _editingEventId, { title:e.title, date:e.date, category:e.category, subject:e.subject, notes:e.notes });
   _editingEventId = null;
 }
 
