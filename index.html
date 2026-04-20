@@ -1148,6 +1148,37 @@ function showSheetBanner() {
   $('sheet-link-small').innerHTML = `<a href="${url}" target="_blank" style="color:var(--sky);font-size:11px;">Open spreadsheet ↗</a>`;
 }
 
+// Checks each sheet's header row and appends any missing columns from SHEET_HEADERS.
+// This silently upgrades old spreadsheets so new fields (like events.subject) work.
+async function migrateSheetHeaders() {
+  try {
+    const sheetNames = SHEET_NAMES.filter(n => n !== '_meta');
+    for (const name of sheetNames) {
+      const canonical = SHEET_HEADERS[name];
+      if (!canonical) continue;
+      // Read just the first row
+      const res = await sheetsReq(
+        `${SHEETS_API}/${S.spreadsheetId}/values/${encodeURIComponent(name)}!1:1`
+      );
+      const existing = (res.values && res.values[0]) || [];
+      const missing = canonical.filter(col => !existing.includes(col));
+      if (missing.length === 0) continue;
+      // Append missing headers to the right of existing columns
+      const startCol = String.fromCharCode(65 + existing.length);
+      const endCol   = String.fromCharCode(65 + existing.length + missing.length - 1);
+      await sheetsReq(
+        `${SHEETS_API}/${S.spreadsheetId}/values/${encodeURIComponent(name)}!${startCol}1:${endCol}1?valueInputOption=RAW`,
+        'PUT',
+        { values: [missing] }
+      );
+      console.log(`Migrated ${name}: added columns ${missing.join(', ')}`);
+    }
+  } catch(e) {
+    // Non-fatal — migration is best-effort
+    console.warn('Sheet header migration failed:', e.message);
+  }
+}
+
 async function loadAllData() {
   try {
     const ranges = SHEET_NAMES.filter(n => n !== '_meta').map(n => `${n}!A:Z`);
@@ -1165,6 +1196,9 @@ async function loadAllData() {
 
     showSheetBanner();
     setSyncStatus('synced', 'All saved');
+
+    // Migrate old sheet headers — add any missing columns to sheets that predate schema changes
+    await migrateSheetHeaders();
   } catch(e) {
     setSyncStatus('error', 'Load failed');
     toast('Error loading data: ' + e.message, true);
@@ -1172,9 +1206,16 @@ async function loadAllData() {
 }
 
 function parseSheetData(sheetName, headers, rows) {
+  // Merge sheet's own header row with the canonical SHEET_HEADERS.
+  // Columns that exist in SHEET_HEADERS but not in the sheet header row
+  // (because the sheet predates that column) default to ''.
+  const canonical = SHEET_HEADERS[sheetName] || [];
   const toObj = row => {
     const obj = {};
-    headers.forEach((h, i) => obj[h] = row[i] || '');
+    // First: populate from what the sheet actually has
+    headers.forEach((h, i) => { if (h) obj[h] = row[i] || ''; });
+    // Then: ensure every canonical field exists (default '')
+    canonical.forEach(h => { if (!(h in obj)) obj[h] = ''; });
     return obj;
   };
 
@@ -2399,20 +2440,32 @@ function renderDashboard() {
   }
 
   // ── Revision warnings ──────────────
-  // For each exam in next 30 days, check if any revision tasks exist for that subject
+  // For each exam in the next 30 days, check if revision tasks cover it.
+  // Two cases:
+  //   A) Exam has an explicit subject set → check for revision tasks for that subject
+  //   B) Exam has no subject set → warn generically so parent is prompted to add subject
   const revWarnings = [];
+  const allTasks = S.tasks[c.id] || [];
+
   upcomingExams.forEach(e => {
-    // Only warn if the exam has an explicit subject set
-    if (!e.subject) return;
-    const hasRevision = (S.tasks[c.id] || []).some(t =>
-      t.isRevision === 'true' && !t.done &&
-      t.subject && t.subject.toLowerCase() === e.subject.toLowerCase() &&
-      t.due && t.due >= ts && t.due <= e.date
-    );
-    if (!hasRevision) {
-      const key = e.subject + '|' + e.id;
+    if (e.subject) {
+      // Case A: exact subject match
+      const hasRevision = allTasks.some(t =>
+        t.isRevision === 'true' && !t.done &&
+        t.subject && t.subject.toLowerCase() === e.subject.toLowerCase() &&
+        t.due && t.due >= ts && t.due <= e.date
+      );
+      if (!hasRevision) {
+        const key = e.subject + '|' + e.id;
+        if (!revWarnings.find(w => w.key === key)) {
+          revWarnings.push({ key, subject: e.subject, examTitle: e.title, examDate: e.date, needsSubject: false });
+        }
+      }
+    } else {
+      // Case B: exam has no subject — warn and prompt to edit the event to add one
+      const key = 'nosubject|' + e.id;
       if (!revWarnings.find(w => w.key === key)) {
-        revWarnings.push({ key, subject: e.subject, examTitle: e.title, examDate: e.date });
+        revWarnings.push({ key, subject: '', examTitle: e.title, examDate: e.date, needsSubject: true, eventId: e.id });
       }
     }
   });
@@ -2421,12 +2474,20 @@ function renderDashboard() {
   if (revWarnings.length) {
     revWarnEl.innerHTML = `<div class="card" style="margin-bottom:16px;">
       <div class="dash-section-title" style="color:var(--amber);">⚠️ Revision not scheduled <span style="font-size:12px;font-weight:500;color:var(--text-soft);font-family:var(--sans);">exams approaching</span></div>
-      ${revWarnings.map(w => `
+      ${revWarnings.map(w => w.needsSubject ? `
+        <div class="revision-warning">
+          <div class="revision-warning-icon">📝</div>
+          <div style="flex:1;">
+            <div class="revision-warning-title">Set subject for: ${w.examTitle}</div>
+            <div class="revision-warning-meta">${fmtDate(w.examDate)} · Tap to edit this exam and add the subject so revision reminders work</div>
+          </div>
+          <button class="revision-warning-btn" onclick="openEditEvent('${w.eventId}')">Edit exam</button>
+        </div>` : `
         <div class="revision-warning">
           <div class="revision-warning-icon">📚</div>
           <div style="flex:1;">
             <div class="revision-warning-title">No revision scheduled for ${w.subject}</div>
-            <div class="revision-warning-meta">${w.examTitle} on ${fmtDate(w.examDate)}</div>
+            <div class="revision-warning-meta">${w.examTitle} · ${fmtDate(w.examDate)}</div>
           </div>
           <button class="revision-warning-btn" onclick="openAddRevision('${w.subject}')">Schedule now</button>
         </div>`).join('')}
