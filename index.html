@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bloom — Student Growth & Academic Manager</title>
+<!-- Content Security Policy: limits where scripts can run and where data can be sent -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' https://accounts.google.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src https://fonts.gstatic.com;
+  connect-src https://sheets.googleapis.com https://www.googleapis.com https://drive.googleapis.com https://accounts.google.com;
+  img-src 'self' https://lh3.googleusercontent.com data: blob:;
+  frame-src https://accounts.google.com;
+">
 
 <!-- ── Load app config (edit bloom-config.js to change settings) ── -->
 <script src="bloom-config.js"></script>
@@ -926,9 +936,21 @@ const S = {
 };
 
 const avatarColors = ['#7a9e7e','#d4955a','#7aa3b8','#9c7bb8','#c97a6a','#b87a45'];
-let nid = Date.now();
-const uid = () => 'id_' + (nid++);
+// Cryptographically random IDs — not guessable or sequential
+const uid = () => {
+  const arr = new Uint8Array(12);
+  crypto.getRandomValues(arr);
+  return 'id_' + Array.from(arr, b => b.toString(36).padStart(2,'0')).join('');
+};
 const $ = id => document.getElementById(id);
+// HTML escaping — prevents XSS when rendering user data into innerHTML
+const esc = s => String(s === undefined || s === null ? '' : s)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 const child = () => S.children.find(c => c.id === S.activeChildId) || null;
 const initChild = id => { ['subjects','grades','tasks','events','journal','milestones'].forEach(k => { if (!S[k][id]) S[k][id] = []; }); };
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -978,27 +1000,34 @@ document.addEventListener('DOMContentLoaded', () => {
 let tokenClient;
 
 function initGoogleAuth() {
-  // Check if config loaded
-  if (!CLIENT_ID) {
-    showAuth();
-    return;
-  }
+  if (!CLIENT_ID) { showAuth(); return; }
 
-  // Try to silently restore session
-  const saved = sessionStorage.getItem('bs_token');
   const savedUser = sessionStorage.getItem('bs_user');
-  if (saved && savedUser) {
-    // Show loading while we reconnect to Sheets
-    $('loading-screen').classList.remove('hidden');
-    $('auth-screen').classList.add('hidden');
-    S.accessToken = saved;
-    S.user = JSON.parse(savedUser);
-    loadApp();
-    return;
-  }
+  if (!savedUser) { showAuth(); return; }
 
-  // No session — just show auth screen (already visible by default)
-  showAuth();
+  // We have a previous user — attempt silent re-auth (no popup, no consent screen)
+  $('loading-screen').classList.remove('hidden');
+  $('loading-msg').textContent = 'Signing you back in…';
+  $('auth-screen').classList.add('hidden');
+  S.user = JSON.parse(savedUser);
+
+  // Initialise tokenClient for silent auth
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    prompt: '',           // empty = silent, no popup
+    callback: async (tokenResponse) => {
+      if (tokenResponse.error || !tokenResponse.access_token) {
+        // Silent auth failed (e.g. no active Google session) — show login screen
+        sessionStorage.clear();
+        showAuth();
+        return;
+      }
+      S.accessToken = tokenResponse.access_token;
+      loadApp();
+    }
+  });
+  tokenClient.requestAccessToken({ prompt: '' });
 }
 
 function showAuth() {
@@ -1021,6 +1050,7 @@ function signInWithGoogle() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
+    prompt: 'consent',
     callback: async (tokenResponse) => {
       if (tokenResponse.error) {
         btn.classList.remove('loading');
@@ -1029,8 +1059,7 @@ function signInWithGoogle() {
         return;
       }
       S.accessToken = tokenResponse.access_token;
-      sessionStorage.setItem('bs_token', S.accessToken);
-      // Fetch user info
+      // Do NOT store the token — only store non-sensitive user profile
       try {
         const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${S.accessToken}` }
@@ -1079,7 +1108,44 @@ const SHEET_HEADERS = {
   _meta:      ['key','value']
 };
 
-async function sheetsReq(url, method='GET', body=null) {
+// Wraps a pending resolve for silent token refresh
+let _tokenRefreshResolve = null;
+
+// Called by tokenClient callback when a silent refresh completes
+function _onTokenRefreshed(token) {
+  S.accessToken = token;
+  if (_tokenRefreshResolve) { _tokenRefreshResolve(); _tokenRefreshResolve = null; }
+}
+
+async function _silentRefreshToken() {
+  return new Promise((resolve, reject) => {
+    _tokenRefreshResolve = resolve;
+    // Re-initialise with empty prompt for silent refresh
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      prompt: '',
+      callback: (tr) => {
+        if (tr.error || !tr.access_token) {
+          _tokenRefreshResolve = null;
+          reject(new Error('Token refresh failed'));
+        } else {
+          _onTokenRefreshed(tr.access_token);
+        }
+      }
+    });
+    tc.requestAccessToken({ prompt: '' });
+    // Safety timeout — if GSI doesn't respond in 8s, reject
+    setTimeout(() => {
+      if (_tokenRefreshResolve) {
+        _tokenRefreshResolve = null;
+        reject(new Error('Token refresh timed out'));
+      }
+    }, 8000);
+  });
+}
+
+async function sheetsReq(url, method='GET', body=null, _retry=false) {
   const opts = {
     method,
     headers: {
@@ -1089,6 +1155,21 @@ async function sheetsReq(url, method='GET', body=null) {
   };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(url, opts);
+
+  // Token expired — try silent refresh once, then retry the request
+  if (res.status === 401 && !_retry) {
+    try {
+      setSyncStatus('syncing', 'Refreshing session…');
+      await _silentRefreshToken();
+      return sheetsReq(url, method, body, true); // retry with fresh token
+    } catch(e) {
+      // Refresh failed — user must re-login
+      toast('Your session has expired. Please sign in again.', true);
+      setTimeout(() => signOut(), 2000);
+      throw new Error('Session expired');
+    }
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `HTTP ${res.status}`);
@@ -1632,7 +1713,7 @@ function renderSidebar() {
     return `
     <div class="child-chip ${c.id === S.activeChildId ? 'active' : ''}" onclick="selectChild('${c.id}')">
       <div class="child-avatar-small" style="background:${avatarColors[i % avatarColors.length]}">${c.name[0].toUpperCase()}</div>
-      <div style="flex:1;min-width:0;"><div class="child-chip-name">${c.name}</div><div class="child-chip-grade">${yearLabel}</div></div>
+      <div style="flex:1;min-width:0;"><div class="child-chip-name">${esc(c.name)}</div><div class="child-chip-grade">${yearLabel}</div></div>
       <div style="display:flex;gap:2px;flex-shrink:0;">
         <button class="del-btn" style="font-size:12px;" onclick="event.stopPropagation();openEditChild('${c.id}')" title="Edit">✎</button>
         <button class="del-btn" onclick="event.stopPropagation();deleteChild('${c.id}')" title="Delete">✕</button>
@@ -1714,7 +1795,7 @@ async function saveChild() {
   renderSidebar();
   const ap = document.querySelector('.page.active');
   if (ap) renderPage(ap.id.replace('page-', ''));
-  toast(name + ' added! 🌱');
+  toast(esc(name) + ' added! 🌱');
   await appendRow('children', SHEET_HEADERS.children, obj);
 }
 
@@ -1771,7 +1852,7 @@ function openAddGrade() {
   if (!child()) { toast('Select a child first'); return; }
   const subs = S.subjects[S.activeChildId] || [];
   if (!subs.length) { toast('Add a subject first'); return; }
-  $('grade-subject').innerHTML = subs.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  $('grade-subject').innerHTML = subs.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
   $('grade-paper').value=''; $('grade-scored').value=''; $('grade-max').value='100'; $('grade-weight').value='';
   $('grade-components-list').innerHTML='';
   $('grade-multi-total').style.display='none';
@@ -1836,11 +1917,11 @@ function renderGrades() {
     if (overall !== null) { const d = overall - s.target; st = d >= 0 ? '<span class="status-bloom">🌸 Blooming</span>' : d >= -5 ? '<span class="status-almost">🌼 Almost there</span>' : '<span class="status-room">🌱 Room to bloom</span>'; }
     return `<div class="subject-card">
       <div class="subject-header">
-        <div><div class="subject-name">${s.name}</div><div style="font-size:12px;color:var(--text-soft);margin-top:2px;">Target: ${s.target}%${overall !== null ? ' · Current: <b>' + overall.toFixed(1) + '%</b>' : ''}</div></div>
-        <div style="display:flex;align-items:center;gap:6px;">${st}<button class="del-btn" style="font-size:12px;" onclick="openEditSubject('${s.id}')" title="Edit subject">✎</button><button class="del-btn" onclick="confirmDelete('${s.name}',()=>deleteSubject('${s.id}'))" title="Remove subject">🗑</button></div>
+        <div><div class="subject-name">${esc(s.name)}</div><div style="font-size:12px;color:var(--text-soft);margin-top:2px;">Target: ${s.target}%${overall !== null ? ' · Current: <b>' + overall.toFixed(1) + '%</b>' : ''}</div></div>
+        <div style="display:flex;align-items:center;gap:6px;">${st}<button class="del-btn" style="font-size:12px;" onclick="openEditSubject('${s.id}')" title="Edit subject">✎</button><button class="del-btn" onclick="confirmDelete('${esc(s.name)}',()=>deleteSubject('${s.id}'))" title="Remove subject">🗑</button></div>
       </div>
       ${sg.length ? `<table class="grade-table"><thead><tr><th>Term</th><th>Paper</th><th>Score</th><th>%</th><th>Weightage</th><th></th></tr></thead><tbody>
-        ${sg.map(g => `<tr><td>${g.term}</td><td>${g.paper || '—'}</td><td>${g.scored}/${g.max}</td><td class="score-pct">${(g.scored / g.max * 100).toFixed(1)}%</td><td>${g.weight ? g.weight + '%' : '—'}</td><td style="white-space:nowrap;"><button class="del-btn" style="font-size:12px;" onclick="openEditGrade('${g.id}')">✎</button><button class="del-btn" onclick="confirmDelete('${g.term} grade',()=>deleteGrade('${g.id}'))">✕</button></td></tr>`).join('')}
+        ${sg.map(g => `<tr><td>${g.term}</td><td>${g.paper || '—'}</td><td>${g.scored}/${g.max}</td><td class="score-pct">${(g.scored / g.max * 100).toFixed(1)}%</td><td>${g.weight ? g.weight + '%' : '—'}</td><td style="white-space:nowrap;"><button class="del-btn" style="font-size:12px;" onclick="openEditGrade('${g.id}')">✎</button><button class="del-btn" onclick="confirmDelete('${esc(g.term)} grade',()=>deleteGrade('${g.id}'))">✕</button></td></tr>`).join('')}
       </tbody></table>` : '<div style="font-size:13px;color:var(--text-soft);text-align:center;padding:12px 0;">No grades yet. Click "＋ Grade" to add.</div>'}
     </div>`;
   }).join('');
@@ -2007,11 +2088,11 @@ function renderTasks() {
   const rt = t => `<div class="task-item ${t.done ? 'done' : ''}">
     <div class="task-check ${t.done ? 'checked' : ''}" onclick="toggleTask('${t.id}')">${t.done ? '✓' : ''}</div>
     <div style="flex:1;cursor:pointer;" onclick="openEditTask('${t.id}')">
-      <div class="task-title-text">${t.title}</div>
-      <div class="task-meta">${t.subject ? t.subject + ' · ' : ''}${t.due ? 'Due ' + fmtDate(t.due) : 'No due date'} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
+      <div class="task-title-text">${esc(t.title)}</div>
+      <div class="task-meta">${t.subject ? esc(t.subject) + ' · ' : ''}${t.due ? 'Due ' + fmtDate(t.due) : 'No due date'} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
     </div>
     <span class="priority-${t.priority === 'high' ? 'high' : t.priority === 'medium' ? 'med' : 'low'}">${t.priority}</span>
-    <button class="del-btn" onclick="confirmDelete('${t.title}',()=>deleteTask('${t.id}'))">✕</button>
+    <button class="del-btn" onclick="confirmDelete('${esc(t.title)}',()=>deleteTask('${t.id}'))">✕</button>
   </div>`;
   const pending = tasks.filter(t => !t.done), done = tasks.filter(t => t.done);
   cont.innerHTML = (pending.length ? `<div style="font-weight:600;font-size:13px;color:var(--text-soft);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;">Pending (${pending.length})</div>${pending.map(rt).join('')}` : '')
@@ -2160,7 +2241,7 @@ function renderCalendar() {
       const moreCount = de.length - MAX_VISIBLE;
       // Each dot is clickable to edit; clicking empty cell area adds new event
       const dotsHtml = visibleEvents.map(e =>
-        `<div class="cal-event-dot" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="Tap to edit">${catEmoji[e.category] || '•'} ${e.title}</div>`
+        `<div class="cal-event-dot" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="Tap to edit">${catEmoji[e.category] || '•'} ${esc(e.title)}</div>`
       ).join('');
       const moreHtml = moreCount > 0 ? `<div style="font-size:10px;color:var(--text-soft);padding:1px 4px;">+${moreCount} more</div>` : '';
       const eventsHtml = `<div class="cal-events-wrap">${dotsHtml}${moreHtml}</div>`;
@@ -2172,10 +2253,10 @@ function renderCalendar() {
     <div class="task-item">
       <div style="font-size:22px;">${catEmoji[e.category] || '⭐'}</div>
       <div style="flex:1;cursor:pointer;" onclick="openEditEvent('${e.id}')">
-        <div class="task-title-text">${e.title}</div>
-        <div class="task-meta">${fmtDate(e.date)} · ${e.category}${e.notes ? ' · ' + e.notes : ''} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
+        <div class="task-title-text">${esc(e.title)}</div>
+        <div class="task-meta">${fmtDate(e.date)} · ${e.category}${e.notes ? ' · ' + esc(e.notes) : ''} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
       </div>
-      <button class="del-btn" onclick="confirmDelete('${e.title}',()=>deleteEvent('${e.id}'))">✕</button>
+      <button class="del-btn" onclick="confirmDelete('${esc(e.title)}',()=>deleteEvent('${e.id}'))">✕</button>
     </div>`).join('');
 }
 function calPrev() { S.calMonth--; if (S.calMonth < 0) { S.calMonth = 11; S.calYear--; } renderCalendar(); }
@@ -2267,10 +2348,10 @@ function renderJournal() {
         <div>
           <span class="reflection-period">📅 ${periodLabel} ${yearLabel}</span>${r.subject ? `<span class="reflection-subject">📚 ${r.subject}</span>` : '<span class="reflection-subject" style="background:var(--stone-pale);color:var(--text-soft);">General</span>'}
         </div>
-<button class="del-btn" style="font-size:12px;" onclick="openEditReflection('${r.id}')" title="Edit">✎</button><button class="del-btn" onclick="confirmDelete('${periodLabel} ${yearLabel} reflection',()=>deleteJournal('${r.id}'))">✕</button>
+<button class="del-btn" style="font-size:12px;" onclick="openEditReflection('${r.id}')" title="Edit">✎</button><button class="del-btn" onclick="confirmDelete('${esc(periodLabel)} ${esc(yearLabel)} reflection',()=>deleteJournal('${r.id}'))">✕</button>
       </div>
-      ${sections.map(s => `<div class="reflection-section"><div class="reflection-section-label">${s.label}</div><div class="reflection-section-body">${s.body}</div></div>`).join('')}
-      ${r.targets ? `<div class="reflection-section"><div class="reflection-section-label">🎯 Targets for next period</div><div class="reflection-target">${r.targets}</div></div>` : ''}
+      ${sections.map(s => `<div class="reflection-section"><div class="reflection-section-label">${s.label}</div><div class="reflection-section-body">${esc(s.body)}</div></div>`).join('')}
+      ${r.targets ? `<div class="reflection-section"><div class="reflection-section-label">🎯 Targets for next period</div><div class="reflection-target">${esc(r.targets)}</div></div>` : ''}
     </div>`;
   }).join('');
 }
@@ -2300,8 +2381,8 @@ function renderMilestones() {
   cont.innerHTML = [...items].sort((a, b) => b.date.localeCompare(a.date)).map(m => `
     <div class="milestone-item">
       <div class="milestone-icon-wrap">${catIcons[m.category] || '⭐'}</div>
-      <div style="flex:1;"><div class="milestone-title-text">${m.title}</div>${m.desc ? `<div class="milestone-meta">${m.desc}</div>` : ''}<div style="display:flex;align-items:center;gap:8px;margin-top:4px;"><span class="milestone-category cat-${m.category}">${m.category}</span><span class="milestone-meta">${fmtDate(m.date)}</span></div></div>
-<button class="del-btn" style="font-size:12px;" onclick="openEditMilestone('${m.id}')" title="Edit">✎</button><button class="del-btn" onclick="confirmDelete('${m.title}',()=>deleteMilestone('${m.id}'))">✕</button>
+      <div style="flex:1;"><div class="milestone-title-text">${esc(m.title)}</div>${m.desc ? `<div class="milestone-meta">${esc(m.desc)}</div>` : ''}<div style="display:flex;align-items:center;gap:8px;margin-top:4px;"><span class="milestone-category cat-${m.category}">${m.category}</span><span class="milestone-meta">${fmtDate(m.date)}</span></div></div>
+<button class="del-btn" style="font-size:12px;" onclick="openEditMilestone('${m.id}')" title="Edit">✎</button><button class="del-btn" onclick="confirmDelete('${esc(m.title)}',()=>deleteMilestone('${m.id}'))">✕</button>
     </div>`).join('');
 }
 
@@ -2317,7 +2398,7 @@ function openAddRevision(subjectName) {
   if (!child()) { toast('Select a child first'); return; }
   const subs = S.subjects[S.activeChildId] || [];
   if (!subs.length) { toast('Add a subject first'); return; }
-  $('rev-subject-sel').innerHTML = subs.map(s => `<option value="${s.name}" ${s.name === subjectName ? 'selected' : ''}>${s.name}</option>`).join('');
+  $('rev-subject-sel').innerHTML = subs.map(s => `<option value="${esc(s.name)}" ${s.name === subjectName ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
   // Default start = today, until = 4 weeks from today
   const startD = new Date(); startD.setDate(startD.getDate() + 1);
   const untilD = new Date(); untilD.setDate(untilD.getDate() + 28);
@@ -2373,7 +2454,7 @@ function renderDashboard() {
     $('recent-activity').innerHTML = '<div class="empty-state" style="padding:24px 0;"><div class="empty-icon">🌱</div><div class="empty-sub">Add a child to see activity here.</div></div>';
     return;
   }
-  $('dash-sub').textContent = 'Overview for ' + c.name;
+  $('dash-sub').textContent = 'Overview for ' + esc(c.name);
   $('sum-subjects').textContent = (S.subjects[c.id] || []).length;
   $('sum-tasks').textContent = (S.tasks[c.id] || []).filter(t => !t.done).length;
   const now = new Date(), ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
@@ -2403,8 +2484,8 @@ function renderDashboard() {
       return `<div class="upcoming-item ${isOverdue ? 'overdue' : ''}" style="cursor:pointer;" onclick="openEditTask('${t.id}')">
         <div class="upcoming-item-icon">✅</div>
         <div style="flex:1;">
-          <div class="upcoming-item-title">${t.title}</div>
-          <div class="upcoming-item-meta">${t.subject || 'No subject'} · Due ${fmtDate(t.due)} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
+          <div class="upcoming-item-title">${esc(t.title)}</div>
+          <div class="upcoming-item-meta">${esc(t.subject) || 'No subject'} · Due ${fmtDate(t.due)} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
         </div>
         <div class="due-badge ${badgeCls}">${badge}</div>
       </div>`;
@@ -2429,8 +2510,8 @@ function renderDashboard() {
       return `<div class="upcoming-item exam" style="cursor:pointer;" onclick="openEditEvent('${e.id}')">
         <div class="upcoming-item-icon">📝</div>
         <div style="flex:1;">
-          <div class="upcoming-item-title">${e.title}</div>
-          <div class="upcoming-item-meta">${fmtDate(e.date)}${e.notes ? ' · ' + e.notes : ''} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
+          <div class="upcoming-item-title">${esc(e.title)}</div>
+          <div class="upcoming-item-meta">${fmtDate(e.date)}${e.notes ? ' · ' + esc(e.notes) : ''} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
         </div>
         <div class="due-badge ${badgeCls}">${badge}</div>
       </div>`;
@@ -2478,7 +2559,7 @@ function renderDashboard() {
         <div class="revision-warning">
           <div class="revision-warning-icon">📝</div>
           <div style="flex:1;">
-            <div class="revision-warning-title">Set subject for: ${w.examTitle}</div>
+            <div class="revision-warning-title">Set subject for: ${esc(w.examTitle)}</div>
             <div class="revision-warning-meta">${fmtDate(w.examDate)} · Tap to edit this exam and add the subject so revision reminders work</div>
           </div>
           <button class="revision-warning-btn" onclick="openEditEvent('${w.eventId}')">Edit exam</button>
@@ -2486,10 +2567,10 @@ function renderDashboard() {
         <div class="revision-warning">
           <div class="revision-warning-icon">📚</div>
           <div style="flex:1;">
-            <div class="revision-warning-title">No revision scheduled for ${w.subject}</div>
-            <div class="revision-warning-meta">${w.examTitle} · ${fmtDate(w.examDate)}</div>
+            <div class="revision-warning-title">No revision scheduled for ${esc(w.subject)}</div>
+            <div class="revision-warning-meta">${esc(w.examTitle)} · ${fmtDate(w.examDate)}</div>
           </div>
-          <button class="revision-warning-btn" onclick="openAddRevision('${w.subject}')">Schedule now</button>
+          <button class="revision-warning-btn" onclick="openAddRevision('${esc(w.subject)}')">Schedule now</button>
         </div>`).join('')}
     </div>`;
   } else {
