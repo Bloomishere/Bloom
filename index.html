@@ -499,7 +499,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
     </div>
 
     <div class="page" id="page-tasks">
-      <div class="page-header"><div><div class="page-title">Homework & Tasks</div><div class="page-sub">Stay on top of assignments</div></div><button class="btn btn-primary btn-sm" onclick="openAddTask()">＋ Add Task</button></div>
+      <div class="page-header"><div><div class="page-title">Homework & Tasks</div><div class="page-sub">Stay on top of assignments</div></div><div style="display:flex;gap:8px;"><button class="btn btn-secondary btn-sm" onclick="openAddRevision('')">📚 Schedule Revision</button><button class="btn btn-primary btn-sm" onclick="openAddTask()">＋ Add Task</button></div></div>
       <div class="no-child-banner" id="tasks-no-child">👆 Select or add a child first.</div>
       <div id="tasks-content"></div>
     </div>
@@ -617,6 +617,13 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
     </div>
     <div class="form-group"><label>Due Date (optional)</label><input type="date" id="task-due"></div>
     <div class="form-group"><label>Notes (optional)</label><textarea id="task-notes" rows="2" placeholder="Any additional notes..."></textarea></div>
+    <div id="task-revision-toggle" style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--sky-pale);border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;" onclick="toggleAddTaskRevision()">
+      <div id="add-task-revision-check" style="width:20px;height:20px;border-radius:50%;border:2px solid var(--sky);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;transition:all 0.15s;"></div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--sky);">📚 Mark as Revision</div>
+        <div style="font-size:11px;color:var(--text-soft);">Tap to flag — revision tasks count toward exam preparation tracking on the dashboard</div>
+      </div>
+    </div>
     <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-add-task')">Cancel</button><button class="btn btn-primary" onclick="saveTask()">Add Task</button></div>
   </div>
 </div>
@@ -844,6 +851,13 @@ body{font-family:var(--sans);background:var(--cream);color:var(--text);min-heigh
     </div>
     <div class="form-group"><label>Due Date (optional)</label><input type="date" id="edit-task-due"></div>
     <div class="form-group"><label>Notes (optional)</label><textarea id="edit-task-notes" rows="2" placeholder="Any additional notes..."></textarea></div>
+    <div id="edit-task-revision-toggle" style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--sky-pale);border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;" onclick="toggleEditTaskRevision()">
+      <div id="edit-task-revision-check" style="width:20px;height:20px;border-radius:50%;border:2px solid var(--sky);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;transition:all 0.15s;"></div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--sky);">📚 Mark as Revision</div>
+        <div style="font-size:11px;color:var(--text-soft);">Revision tasks count toward exam preparation tracking on the dashboard</div>
+      </div>
+    </div>
     <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--sage-pale);border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;" onclick="toggleEditTaskDone()">
       <div id="edit-task-done-check" style="width:20px;height:20px;border-radius:50%;border:2px solid var(--sage);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;transition:all 0.15s;"></div>
       <div>
@@ -1930,7 +1944,29 @@ function renderGrades() {
 // ═══════════════════════════════════════════════════════════════════
 // TASKS
 // ═══════════════════════════════════════════════════════════════════
-function openAddTask() { if (!child()) { toast('Select a child first'); return; } $('task-title-input').value = ''; $('task-subject').value = ''; $('task-due').value = todayStr(); $('task-notes').value = ''; openModal('modal-add-task'); setTimeout(() => $('task-title-input').focus(), 100); }
+let _addTaskIsRevision = false;
+function toggleAddTaskRevision() {
+  _addTaskIsRevision = !_addTaskIsRevision;
+  const chk = $('add-task-revision-check');
+  if (_addTaskIsRevision) {
+    chk.style.background = 'var(--sky)'; chk.style.borderColor = 'var(--sky)';
+    chk.style.color = 'white'; chk.textContent = '✓';
+  } else {
+    chk.style.background = ''; chk.style.borderColor = 'var(--sky)';
+    chk.style.color = ''; chk.textContent = '';
+  }
+}
+function openAddTask() {
+  if (!child()) { toast('Select a child first'); return; }
+  $('task-title-input').value = ''; $('task-subject').value = '';
+  $('task-due').value = todayStr(); $('task-notes').value = '';
+  // Reset revision toggle
+  _addTaskIsRevision = false;
+  const chk = $('add-task-revision-check');
+  chk.style.background = ''; chk.style.borderColor = 'var(--sky)';
+  chk.style.color = ''; chk.textContent = '';
+  openModal('modal-add-task'); setTimeout(() => $('task-title-input').focus(), 100);
+}
 async function saveTask() {
   const title = $('task-title-input').value.trim(); if (!title) { $('task-title-input').focus(); return; }
   const obj = {
@@ -1939,7 +1975,7 @@ async function saveTask() {
     priority: $('task-priority').value,
     due: $('task-due').value,
     notes: $('task-notes').value.trim(),
-    done: false, isRevision: ''
+    done: false, isRevision: _addTaskIsRevision ? 'true' : ''
   };
   // Add to local state immediately (optimistic)
   S.tasks[S.activeChildId].push(obj);
@@ -2000,6 +2036,19 @@ async function deleteTask(tid) {
 }
 let _editingTaskId = null;
 let _editTaskDoneState = false;
+let _editTaskRevisionState = false;
+
+function toggleEditTaskRevision() {
+  _editTaskRevisionState = !_editTaskRevisionState;
+  const chk = $('edit-task-revision-check');
+  if (_editTaskRevisionState) {
+    chk.style.background = 'var(--sky)'; chk.style.borderColor = 'var(--sky)';
+    chk.style.color = 'white'; chk.textContent = '✓';
+  } else {
+    chk.style.background = ''; chk.style.borderColor = 'var(--sky)';
+    chk.style.color = ''; chk.textContent = '';
+  }
+}
 
 function toggleEditTaskDone() {
   _editTaskDoneState = !_editTaskDoneState;
@@ -2022,11 +2071,21 @@ function openEditTask(tid) {
   if (!t) return;
   _editingTaskId = tid;
   _editTaskDoneState = t.done || false;
+  _editTaskRevisionState = t.isRevision === 'true';
   $('edit-task-title').value = t.title || '';
   $('edit-task-subject').value = t.subject || '';
   $('edit-task-priority').value = t.priority || 'medium';
   $('edit-task-due').value = t.due || '';
   $('edit-task-notes').value = t.notes || '';
+  // Sync revision toggle UI
+  const revChk = $('edit-task-revision-check');
+  if (_editTaskRevisionState) {
+    revChk.style.background = 'var(--sky)'; revChk.style.borderColor = 'var(--sky)';
+    revChk.style.color = 'white'; revChk.textContent = '✓';
+  } else {
+    revChk.style.background = ''; revChk.style.borderColor = 'var(--sky)';
+    revChk.style.color = ''; revChk.textContent = '';
+  }
   // Sync done toggle UI
   const chk = $('edit-task-done-check');
   if (_editTaskDoneState) {
@@ -2055,12 +2114,13 @@ async function saveEditTask() {
   t.due      = $('edit-task-due').value;
   t.notes    = $('edit-task-notes').value.trim();
   t.done     = nowDone;
+  t.isRevision = _editTaskRevisionState ? 'true' : '';
 
   closeModal('modal-edit-task');
   renderTasks(); renderDashboard();
   toast('Task updated!');
 
-  await updateRow('tasks', _editingTaskId, { title:t.title, subject:t.subject, priority:t.priority, due:t.due, notes:t.notes, done:t.done });
+  await updateRow('tasks', _editingTaskId, { title:t.title, subject:t.subject, priority:t.priority, due:t.due, notes:t.notes, done:t.done, isRevision:t.isRevision });
 
   // If just marked done and completed early — offer milestone
   if (wasNotDone && nowDone && t.due) {
@@ -2088,7 +2148,7 @@ function renderTasks() {
   const rt = t => `<div class="task-item ${t.done ? 'done' : ''}">
     <div class="task-check ${t.done ? 'checked' : ''}" onclick="toggleTask('${t.id}')">${t.done ? '✓' : ''}</div>
     <div style="flex:1;cursor:pointer;" onclick="openEditTask('${t.id}')">
-      <div class="task-title-text">${esc(t.title)}</div>
+      <div class="task-title-text">${esc(t.title)}${t.isRevision === 'true' ? ' <span style="font-size:10px;background:var(--sky-pale);color:var(--sky);font-weight:700;padding:1px 6px;border-radius:8px;vertical-align:middle;">📚 Revision</span>' : ''}</div>
       <div class="task-meta">${t.subject ? esc(t.subject) + ' · ' : ''}${t.due ? 'Due ' + fmtDate(t.due) : 'No due date'} <span style="color:var(--stone-light);font-size:10px;">✎ tap to edit</span></div>
     </div>
     <span class="priority-${t.priority === 'high' ? 'high' : t.priority === 'medium' ? 'med' : 'low'}">${t.priority}</span>
@@ -2531,10 +2591,13 @@ function renderDashboard() {
   upcomingExams.forEach(e => {
     if (e.subject) {
       // Case A: exact subject match
+      // Suppress warning if there is any revision task (pending OR completed) for this subject,
+      // covering the window up to the exam date — a completed one-off counts too.
       const hasRevision = allTasks.some(t =>
-        t.isRevision === 'true' && !t.done &&
+        t.isRevision === 'true' &&
         t.subject && t.subject.toLowerCase() === e.subject.toLowerCase() &&
-        t.due && t.due >= ts && t.due <= e.date
+        t.due && t.due <= e.date &&
+        (!t.done ? t.due >= ts : true)   // pending must be in future; completed ones always count
       );
       if (!hasRevision) {
         const key = e.subject + '|' + e.id;
