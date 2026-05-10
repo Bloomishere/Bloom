@@ -28,7 +28,7 @@ const BLOOM_CONFIG = {
   // ── Telegram Bot ───────────────────────────────────────────────
   // Get this from: @BotFather on Telegram → /newbot
   // Only required if you are running bloom-agent.js.
-  telegramBotToken: '7963230878:AAG07MhQsgNtrs_Qk1x00W4A8votsDQjn28',
+  telegramBotToken: '',
 
   // Your bot's Telegram username WITHOUT the @ symbol.
   // Used by the web app to generate the one-tap connect link.
