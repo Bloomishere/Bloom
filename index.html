@@ -169,6 +169,8 @@
           <span id="sync-label">Ready</span>
         </div>
         <div style="font-size:11px;color:var(--text-soft);padding:0 10px;" id="sheet-link-small"></div>
+        <!-- Telegram connect button (injected by bloom-telegram-connect.js) -->
+        <div id="tg-sidebar-slot"></div>
       </div>
 
     </div><!-- /.sidebar -->
@@ -194,6 +196,9 @@
 
         <!-- Google Sheet link (injected by showSheetBanner()) -->
         <div id="sheet-banner-area"></div>
+
+        <!-- Telegram onboarding banner (injected by bloom-telegram-connect.js) -->
+        <div id="tg-banner-slot"></div>
 
         <!-- Summary counters -->
         <div class="summary-cards">
@@ -887,6 +892,22 @@
 
 
   <!-- ═══════════════════════════════════════════════════════════════
+       MODAL — TELEGRAM CONNECTED CONFIRMATION
+       Shown automatically when the bot detects the link is complete.
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modal-tg-connected">
+    <div class="modal" style="max-width:360px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:12px;">🌱</div>
+      <div class="modal-title" style="justify-content:center;">Telegram connected!</div>
+      <div id="tg-connected-body" style="font-size:13px;color:var(--text-soft);line-height:1.6;margin-bottom:20px;"></div>
+      <div class="modal-actions" style="justify-content:center;">
+        <button class="btn btn-primary" onclick="closeModal('modal-tg-connected')">Got it 🌱</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════
        TOAST
   ════════════════════════════════════════════════════════════════ -->
   <div id="toast"></div>
@@ -898,6 +919,7 @@
        bloom-config.js and the GSI script load in <head>.
   ════════════════════════════════════════════════════════════════ -->
   <script src="bloom-app.js"></script>
+  <script src="bloom-telegram-connect.js"></script>
 
 </body>
 </html>

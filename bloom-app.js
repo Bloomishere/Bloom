@@ -703,6 +703,11 @@ async function loadApp() {
   renderSidebar();
   renderDashboard();
   renderCalendar();
+
+  // Initialise Telegram onboarding silently in the background.
+  // tgInit() is defined in bloom-telegram-connect.js — no-ops gracefully
+  // if that file isn't loaded or the Sheet isn't ready yet.
+  if (typeof tgInit === 'function') tgInit();
 }
 
 
