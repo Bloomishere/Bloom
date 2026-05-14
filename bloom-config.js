@@ -61,7 +61,7 @@ const BLOOM_CONFIG = {
   // Get this from: console.anthropic.com → API Keys
   // Set via environment variable ANTHROPIC_API_KEY on your server
   // rather than hardcoding it here.
-  anthropicApiKey: process.env?.ANTHROPIC_API_KEY || 'YOUR_ANTHROPIC_API_KEY',
+  anthropicApiKey: (typeof process !== 'undefined' && process.env?.ANTHROPIC_API_KEY) || 'YOUR_ANTHROPIC_API_KEY',
 
 };
 
